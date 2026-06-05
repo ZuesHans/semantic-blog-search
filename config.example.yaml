@@ -1,0 +1,24 @@
+posts_dir: "C:/Users/31802/Documents/keronshans_blogsorce/content/posts"
+url_prefix: "/posts"
+
+qdrant:
+  db_path: "./data/qdrant"
+  collection_name: "blog_chunks"
+
+embedding:
+  model_name: "BAAI/bge-small-zh-v1.5"
+
+chunk:
+  chunk_size: 600
+  chunk_overlap: 100
+
+search:
+  top_k: 5
+
+index:
+  manifest_path: "./data/index_manifest.json"
+
+server:
+  host: "127.0.0.1"
+  port: 8000
+  api_token: "change-this-token-before-deploy"

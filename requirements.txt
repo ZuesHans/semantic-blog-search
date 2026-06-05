@@ -1,0 +1,8 @@
+python-frontmatter
+sentence-transformers
+qdrant-client
+pyyaml
+tqdm
+pytest
+fastapi
+uvicorn
