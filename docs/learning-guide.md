@@ -846,7 +846,71 @@ API 服务：
 
 模型常驻内存，所以后续搜索更快。
 
-## 13. 当前项目已经做到什么程度？
+## 13. 什么是混合搜索？
+
+一开始项目主要用向量搜索：
+
+```txt
+查询语句 -> embedding 向量 -> Qdrant 找语义最接近的 chunk
+```
+
+这种方式适合找“意思相近”的内容，但有时会漏掉非常具体的词，例如：
+
+```txt
+按秩合并
+并查集
+pushdown
+lazy tag
+```
+
+混合搜索就是多加一个信号：
+
+```txt
+语义相似度 + 关键词匹配 = 最终排序
+```
+
+现在的流程是：
+
+```txt
+1. 先用向量搜索召回更多候选结果，比如 top 20 或 top 30
+2. 再检查标题、标签、正文里是否出现查询词
+3. 如果标题/标签/正文命中关键词，就给这个 chunk 加分
+4. 最后重新排序，只返回 top_k 个结果
+```
+
+这不是重新训练模型，也不是接入新的大模型。它只是让排序更懂你的算法术语。
+
+相关配置在 `config.yaml`：
+
+```yaml
+search:
+  top_k: 5
+  hybrid_enabled: true
+  hybrid_candidate_multiplier: 4
+  hybrid_candidate_limit: 30
+  hybrid_keyword_weight: 0.25
+```
+
+含义：
+
+- `hybrid_enabled`：是否启用混合搜索。
+- `hybrid_candidate_multiplier`：先多拿一些候选，例如 `top_k=5` 时先拿约 20 个。
+- `hybrid_candidate_limit`：候选数量上限，避免太慢。
+- `hybrid_keyword_weight`：关键词加分权重。
+
+因为混合搜索需要检查完整 chunk 文本，所以新版索引会把完整 `text` 存进 Qdrant payload。旧索引升级后，最好跑一次：
+
+```bash
+python scripts/build_index.py --config config.yaml
+```
+
+服务器上如果使用离线模型缓存，就继续带上：
+
+```bash
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python scripts/build_index.py --config config.yaml
+```
+
+## 14. 当前项目已经做到什么程度？
 
 已经做到：
 
@@ -871,7 +935,7 @@ API 服务：
 - 没有自动备份 Qdrant 数据
 - 没有公开搜索限流
 
-## 14. 我现在怎么自己测试？
+## 15. 我现在怎么自己测试？
 
 ### 测 health
 
@@ -903,7 +967,7 @@ curl -H "Authorization: Bearer <token>" "https://api.keronshans.top/search?q=线
 
 成功会返回搜索结果。
 
-## 15. 日常更新博客后怎么办？
+## 16. 日常更新博客后怎么办？
 
 本地文章更新后，在本地 PowerShell：
 
@@ -923,7 +987,7 @@ HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python scripts/sync_index.py --config co
 
 通常不用重启服务。
 
-## 16. 如果服务挂了怎么办？
+## 17. 如果服务挂了怎么办？
 
 先看服务状态：
 
@@ -949,7 +1013,7 @@ sudo systemctl restart semantic-blog-search
 curl https://api.keronshans.top/health
 ```
 
-## 17. 如果搜索不到新文章怎么办？
+## 18. 如果搜索不到新文章怎么办？
 
 按顺序检查：
 
@@ -981,7 +1045,7 @@ curl https://api.keronshans.top/health
 Authorization: Bearer <token>
 ```
 
-## 18. 这个项目适合怎么继续学？
+## 19. 这个项目适合怎么继续学？
 
 建议阅读顺序：
 
@@ -1006,7 +1070,7 @@ Cloudflare Tunnel 怎么把公网请求转到 FastAPI？
 Cloudflare DNS 怎么把域名转到 Tunnel？
 ```
 
-## 19. Cloudflare Tunnel 这一步是在做什么？
+## 20. Cloudflare Tunnel 这一步是在做什么？
 
 一开始我们尝试过让 `api.keronshans.top` 直接指向腾讯云服务器公网 IP。
 
@@ -1166,7 +1230,7 @@ journalctl -u cloudflared -n 100 --no-pager
 
 浏览器看不到 Bearer Token，因为 token 只存在网站服务端环境变量和搜索服务器配置里。
 
-## 20. 当前最大的维护风险
+## 21. 当前最大的维护风险
 
 ### token 泄露
 
@@ -1227,7 +1291,7 @@ systemctl status cloudflared --no-pager
 curl https://api.keronshans.top/health
 ```
 
-## 21. 一句话总结
+## 22. 一句话总结
 
 这个项目做的是：
 

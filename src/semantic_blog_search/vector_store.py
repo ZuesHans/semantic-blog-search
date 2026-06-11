@@ -57,6 +57,7 @@ class VectorStore:
                 "url": chunk["url"],
                 "tags": chunk["tags"],
                 "source_file": chunk["source_file"],
+                "text": chunk["text"],
                 "snippet": _make_snippet(chunk["text"]),
                 "chunk_index": chunk["chunk_index"],
             }
@@ -111,19 +112,13 @@ class VectorStore:
         """Search Qdrant and return payloads with scores."""
         self.ensure_collection()
         hits = self._search_points(query_vector, top_k)
-        results = []
-        for hit in hits:
-            payload = hit.payload or {}
-            results.append(
-                {
-                    "title": payload.get("title", ""),
-                    "url": payload.get("url", ""),
-                    "score": float(hit.score),
-                    "snippet": payload.get("snippet", ""),
-                    "source_file": payload.get("source_file", ""),
-                }
-            )
-        return results
+        return [_result_from_hit(hit) for hit in hits]
+
+    def search_candidates(self, query_vector: list[float], limit: int) -> list[dict]:
+        """Search Qdrant and return richer candidate payloads for reranking."""
+        self.ensure_collection()
+        hits = self._search_points(query_vector, limit)
+        return [_result_from_hit(hit, include_text=True) for hit in hits]
 
     def _collection_exists(self) -> bool:
         if hasattr(self.client, "collection_exists"):
@@ -148,6 +143,27 @@ class VectorStore:
             limit=top_k,
             with_payload=True,
         )
+
+
+def _result_from_hit(hit, include_text: bool = False) -> dict:
+    payload = hit.payload or {}
+    result = {
+        "title": payload.get("title", ""),
+        "url": payload.get("url", ""),
+        "score": float(hit.score),
+        "snippet": payload.get("snippet", ""),
+        "source_file": payload.get("source_file", ""),
+    }
+    if include_text:
+        result.update(
+            {
+                "text": payload.get("text", payload.get("snippet", "")),
+                "tags": payload.get("tags", []),
+                "chunk_id": payload.get("chunk_id", ""),
+                "chunk_index": payload.get("chunk_index", 0),
+            }
+        )
+    return result
 
 
 def _make_snippet(text: str, max_length: int = 180) -> str:

@@ -109,6 +109,35 @@ python scripts/sync_index.py --config config.yaml
 
 `data/` 已经在 `.gitignore` 中，不应该提交到 GitHub。
 
+## 混合搜索
+
+默认搜索现在使用轻量混合排序：
+
+```txt
+向量语义召回 -> 取更多候选 chunk -> 关键词/标题/标签加分 -> 返回 top_k
+```
+
+它适合算法博客里常见的精确术语，例如“按秩合并”“并查集”“pushdown”“lazy tag”。向量搜索负责找语义相近的片段，关键词加分负责避免精确术语被漏掉。
+
+相关配置：
+
+```yaml
+search:
+  top_k: 5
+  hybrid_enabled: true
+  hybrid_candidate_multiplier: 4
+  hybrid_candidate_limit: 30
+  hybrid_keyword_weight: 0.25
+```
+
+如果你刚从旧版本升级，需要重新写入一次索引 payload，让 Qdrant 里保存完整 chunk 文本：
+
+```bash
+python scripts/build_index.py --config config.yaml
+```
+
+或者让文章通过增量索引重新写入。否则旧索引只能用较短的 snippet 做关键词匹配，效果会弱一些。
+
 ## 启动常驻搜索 API
 
 如果你希望接入个人网站后台，可以启动本地 API 服务：
@@ -214,6 +243,10 @@ curl -H "Authorization: Bearer <token>" "https://api.keronshans.top/search?q=线
 - `chunk.chunk_size`：每个 chunk 目标字符数。
 - `chunk.chunk_overlap`：相邻 chunk 之间保留的重叠字符数。
 - `search.top_k`：默认返回的搜索结果数量。
+- `search.hybrid_enabled`：是否启用混合搜索排序。
+- `search.hybrid_candidate_multiplier`：向量召回候选数相对 `top_k` 的倍数。
+- `search.hybrid_candidate_limit`：混合搜索最多召回多少候选 chunk。
+- `search.hybrid_keyword_weight`：关键词分数对最终排序的影响权重。
 - `index.manifest_path`：增量索引状态文件路径。
 - `server.host`：API 服务监听地址。本地使用 `127.0.0.1`，云平台可能需要 `0.0.0.0`。
 - `server.port`：API 服务端口。
