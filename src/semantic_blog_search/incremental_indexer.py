@@ -73,9 +73,9 @@ def sync_index_with_services(
     url_prefix = config.get("url_prefix", "/posts")
 
     chunk_config = config.get("chunk", {})
-    chunk_size = int(chunk_config.get("chunk_size", 600))
-    chunk_overlap = int(chunk_config.get("chunk_overlap", 100))
-    split_heading_max_level = int(chunk_config.get("split_heading_max_level", 0) or 0)
+    chunk_size = int(chunk_config.get("chunk_size", 700))
+    chunk_overlap = int(chunk_config.get("chunk_overlap", 120))
+    split_heading_max_level = int(chunk_config.get("split_heading_max_level", 4) or 0)
     include_heading_path = bool(chunk_config.get("include_heading_path", True))
 
     manifest = load_manifest(manifest_path)
