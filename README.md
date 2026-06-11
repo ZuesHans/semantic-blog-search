@@ -152,6 +152,58 @@ curl -H "Authorization: Bearer replace-with-a-long-random-token" "http://127.0.0
 docs/deploy-to-keronshans.md
 ```
 
+## Cloudflare Tunnel 接入方式
+
+当前线上推荐使用 Cloudflare Tunnel 暴露搜索 API，而不是直接把服务器公网 IP 或 `8080` 端口暴露出去。
+
+整体链路是：
+
+```txt
+keronshans.top 页面
+  -> /api/blog-search
+  -> https://api.keronshans.top/search
+  -> Cloudflare Tunnel
+  -> 腾讯云服务器 127.0.0.1:8000
+  -> semantic-blog-search FastAPI
+```
+
+这样做的原因：
+
+- Python 搜索服务仍然只监听 `127.0.0.1:8000`，不直接暴露公网端口。
+- Cloudflare 负责 HTTPS 和公网入口。
+- 避免直接访问腾讯云 IP、备案页、DNS-only/proxied 混用带来的不稳定。
+- 网站前端仍然只请求主站自己的 `/api/blog-search`，不会暴露 Bearer Token。
+
+当前 Cloudflare 侧配置：
+
+```txt
+Tunnel name: semantic-blog-search
+Public hostname: api.keronshans.top
+Tunnel service: http://127.0.0.1:8000
+DNS: api.keronshans.top CNAME <tunnel-id>.cfargotunnel.com
+```
+
+服务器上需要常驻两个服务：
+
+```bash
+systemctl status semantic-blog-search --no-pager
+systemctl status cloudflared --no-pager
+```
+
+验证公网入口：
+
+```bash
+curl https://api.keronshans.top/health
+curl "https://api.keronshans.top/search?q=线段树&top_k=5"
+curl -H "Authorization: Bearer <token>" "https://api.keronshans.top/search?q=线段树&top_k=5"
+```
+
+预期结果：
+
+- `/health` 返回 `status: ok`。
+- 不带 token 的 `/search` 返回 `401`。
+- 带 token 的 `/search` 返回 JSON 搜索结果。
+
 ## 配置项说明
 
 - `posts_dir`：Hexo Markdown 文章目录。

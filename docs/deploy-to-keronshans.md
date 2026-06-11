@@ -1,6 +1,16 @@
 # Deploy semantic-blog-search for keronshans.top
 
-This guide keeps `keronshans.top` on Cloudflare Pages and runs the Python search API on a separate lightweight Ubuntu server.
+This guide keeps `keronshans.top` on Cloudflare Pages / Workers and runs the Python search API on a separate lightweight Ubuntu server.
+
+The current production path uses Cloudflare Tunnel:
+
+```txt
+keronshans.top
+  -> /api/blog-search
+  -> https://api.keronshans.top/search
+  -> Cloudflare Tunnel
+  -> 127.0.0.1:8000 on the Tencent Cloud server
+```
 
 ## 1. Prepare the server
 
@@ -8,7 +18,7 @@ Use Ubuntu 24.04 with at least 2 GB RAM and 20 GB disk.
 
 ```bash
 sudo apt update
-sudo apt install -y python3 python3-venv python3-pip git caddy
+sudo apt install -y python3 python3-venv python3-pip git curl
 sudo mkdir -p /opt/semantic-blog-search
 sudo chown -R ubuntu:ubuntu /opt/semantic-blog-search
 ```
@@ -65,37 +75,44 @@ Local health check:
 curl http://127.0.0.1:8000/health
 ```
 
-## 4. Reverse proxy with Caddy
+## 4. Connect with Cloudflare Tunnel
 
-Copy the Caddy template into `/etc/caddy/Caddyfile` or merge it into the existing file:
+The search API should keep listening on `127.0.0.1:8000`. Do not expose port `8000` directly to the public internet.
 
-```caddy
-api.keronshans.top {
-    reverse_proxy 127.0.0.1:8000
-}
-```
-
-Reload Caddy:
-
-```bash
-sudo systemctl reload caddy
-```
-
-## 5. Add Cloudflare DNS
-
-After buying the server, get its public IPv4 address.
-
-In Cloudflare DNS for `keronshans.top`, add:
+Create or reuse this Cloudflare Tunnel:
 
 ```txt
-Type: A
-Name: api
-Content: <server public IPv4>
-Proxy status: Proxied
-TTL: Auto
+Tunnel name: semantic-blog-search
+Public hostname: api.keronshans.top
+Service type: HTTP
+Service URL: 127.0.0.1:8000
 ```
 
-Do not edit the existing root domain record for `keronshans.top`; it is managed by Cloudflare Pages.
+The DNS record should be a proxied CNAME created for the tunnel:
+
+```txt
+Type: CNAME
+Name: api
+Content: <tunnel-id>.cfargotunnel.com
+Proxy status: Proxied
+```
+
+On the server, install and run `cloudflared` with the tunnel token from Cloudflare:
+
+```bash
+cd /tmp
+curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+sudo dpkg -i cloudflared.deb
+sudo cloudflared service install '<cloudflare-tunnel-token>'
+```
+
+Do not commit or publish the tunnel token. It lets a server connect to this Cloudflare Tunnel.
+
+Check the connector:
+
+```bash
+systemctl status cloudflared --no-pager
+```
 
 Public checks:
 
@@ -107,9 +124,11 @@ curl -H "Authorization: Bearer replace-with-a-long-random-token" "https://api.ke
 
 The second command should return `401`; the third should return results.
 
-## 6. Connect the Cloudflare Pages website
+If `https://api.keronshans.top/health` returns Cloudflare error `1033`, the DNS and Tunnel exist, but the server-side `cloudflared` connector is not running yet.
 
-In the website repo `ZuesHans/ZuesHans.github.io`, add a server route:
+## 5. Connect the Cloudflare Pages website
+
+In the website repo, add or keep a server route:
 
 ```txt
 app/api/blog-search/route.ts
@@ -121,7 +140,7 @@ Use the example in:
 integrations/cloudflare-pages/app-api-blog-search-route.ts
 ```
 
-Configure Cloudflare Pages environment variables:
+Configure Cloudflare Workers / Pages environment variables:
 
 ```txt
 SEARCH_API_URL=https://api.keronshans.top/search
@@ -136,7 +155,7 @@ The browser should call the Pages route:
 
 The browser must not call `api.keronshans.top/search` directly, because that would expose the Bearer token.
 
-## 7. Update the index after blog changes
+## 6. Update the index after blog changes
 
 SSH into the server and run:
 

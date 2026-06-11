@@ -168,12 +168,22 @@ scripts/sync_index.py
 /opt/keronshans_blogsorce/content/posts
 ```
 
-### 第六步：接入 Cloudflare 域名
+### 第六步：接入 Cloudflare Tunnel
 
-我们在 Cloudflare 配置了：
+一开始我们试过让 `api.keronshans.top` 直接指向腾讯云公网 IP：
 
 ```txt
 api.keronshans.top -> 175.178.216.243
+```
+
+但这种方式容易碰到备案页、端口暴露、DNS-only/proxied 混用等问题。
+
+后来我们改成了 Cloudflare Tunnel：
+
+```txt
+api.keronshans.top
+  -> Cloudflare Tunnel
+  -> 腾讯云服务器 127.0.0.1:8000
 ```
 
 主站：
@@ -190,7 +200,7 @@ keronshans.top
 api.keronshans.top
 ```
 
-由腾讯云服务器提供。
+由 Cloudflare Tunnel 转发到腾讯云服务器上的 FastAPI 服务。
 
 ### 第七步：跑通公网搜索接口
 
@@ -230,7 +240,7 @@ Qdrant local 向量数据库
 FastAPI 搜索服务
         |
         v
-Nginx 反向代理
+Cloudflare Tunnel
         |
         v
 Cloudflare
@@ -245,7 +255,9 @@ https://api.keronshans.top
 浏览器
   -> keronshans.top 页面
   -> /api/blog-search
-  -> api.keronshans.top/search
+  -> https://api.keronshans.top/search
+  -> Cloudflare Tunnel
+  -> 127.0.0.1:8000
   -> 搜索结果
 ```
 
@@ -370,7 +382,7 @@ GET /search
 
 你的搜索服务就是一个 FastAPI 应用。
 
-### Nginx
+### Cloudflare Tunnel
 
 FastAPI 服务只监听：
 
@@ -380,15 +392,15 @@ FastAPI 服务只监听：
 
 这个地址只能服务器自己访问。
 
-Nginx 负责把公网请求转发进去：
+Cloudflare Tunnel 负责把公网请求安全地转发进去：
 
 ```txt
 https://api.keronshans.top
-  -> Nginx
+  -> Cloudflare Tunnel
   -> 127.0.0.1:8000
 ```
 
-这叫反向代理。
+服务器上运行的 `cloudflared` 是 Tunnel 连接器。它主动连到 Cloudflare，所以你不需要把 `8000` 端口暴露到公网。
 
 ### Cloudflare
 
@@ -400,7 +412,7 @@ Cloudflare 负责域名解析和 HTTPS 入口。
 api.keronshans.top
 ```
 
-通过 Cloudflare 指向你的腾讯云服务器。
+通过 Cloudflare Tunnel 指向你的腾讯云服务器本机服务。
 
 ## 6. 项目目录怎么看？
 
@@ -473,7 +485,7 @@ semantic-blog-search.service.example
 Caddyfile.example
 ```
 
-现在服务器实际用的是 Nginx，但这些模板仍然能作为参考。
+现在公网入口实际使用 Cloudflare Tunnel；这些模板保留为反向代理部署的参考。
 
 ### integrations/
 
@@ -846,15 +858,15 @@ API 服务：
 - Qdrant local 索引已建立
 - 命令行搜索能搜出结果
 - FastAPI 服务已跑通
-- Nginx 反代已跑通
-- Cloudflare 域名 `api.keronshans.top` 已跑通
+- Cloudflare Tunnel 已在 Cloudflare 侧创建
+- `api.keronshans.top` 已切到 Tunnel CNAME
 - `/search` 有 Bearer Token 保护
-- 网站端交接文档已写好
+- 网站端 `/api/blog-search` 代理 route 已部署
+- 网站端 `SEARCH_API_URL` 已改为 `https://api.keronshans.top/search`
 
 还没做到：
 
-- 主站页面还没有搜索框
-- 主站还没有 `/api/blog-search` 代理 route
+- 服务器上的 `cloudflared` 连接器还需要安装并启动
 - 文章同步还是手动 `scp`
 - 没有自动备份 Qdrant 数据
 - 没有公开搜索限流
@@ -990,11 +1002,171 @@ chunk 是怎么变成向量的？
 向量是怎么存进 Qdrant 的？
 搜索时查询语句怎么变成向量？
 FastAPI 怎么把搜索结果变成 HTTP JSON？
-Nginx 怎么把公网请求转到 FastAPI？
-Cloudflare 怎么把域名转到服务器？
+Cloudflare Tunnel 怎么把公网请求转到 FastAPI？
+Cloudflare DNS 怎么把域名转到 Tunnel？
 ```
 
-## 19. 当前最大的维护风险
+## 19. Cloudflare Tunnel 这一步是在做什么？
+
+一开始我们尝试过让 `api.keronshans.top` 直接指向腾讯云服务器公网 IP。
+
+这个思路看起来很直观：
+
+```txt
+api.keronshans.top -> 175.178.216.243 -> 服务器上的搜索服务
+```
+
+但实际会遇到几个问题：
+
+- 腾讯云公网域名访问可能出现备案页。
+- 直接暴露服务器端口不够优雅。
+- Cloudflare 的 DNS-only、Proxied、Worker 访问裸 IP 容易混在一起。
+- 网站端请求搜索服务时，链路不稳定，排错也麻烦。
+
+所以我们改成 Cloudflare Tunnel。
+
+### Cloudflare Tunnel 是什么？
+
+你可以把它理解成：
+
+```txt
+服务器主动连出去，建立一条到 Cloudflare 的安全通道。
+```
+
+以前是外部请求直接找你的服务器：
+
+```txt
+用户 -> Cloudflare -> 腾讯云公网 IP -> 服务器端口
+```
+
+现在变成：
+
+```txt
+用户 -> Cloudflare -> Tunnel -> 服务器本机 127.0.0.1:8000
+```
+
+服务器上运行的 `cloudflared` 就是这个通道的连接器。
+
+### 这一步实际改了什么？
+
+Cloudflare 侧：
+
+```txt
+Tunnel name: semantic-blog-search
+Public hostname: api.keronshans.top
+Service URL: http://127.0.0.1:8000
+DNS: api.keronshans.top CNAME <tunnel-id>.cfargotunnel.com
+```
+
+网站侧：
+
+```txt
+SEARCH_API_URL=https://api.keronshans.top/search
+```
+
+服务器侧需要运行两个常驻服务：
+
+```txt
+semantic-blog-search 负责真正搜索
+cloudflared 负责把 Cloudflare 请求送进服务器
+```
+
+### 为什么搜索服务还监听 127.0.0.1？
+
+`127.0.0.1` 的意思是“只允许本机访问”。
+
+也就是说：
+
+```txt
+公网用户不能直接访问 127.0.0.1:8000
+只有服务器自己能访问 127.0.0.1:8000
+```
+
+Cloudflare Tunnel 的好处是：`cloudflared` 就运行在服务器本机，所以它能访问 `127.0.0.1:8000`，再把结果安全地带回 Cloudflare。
+
+这比直接开放公网端口更适合你的项目。
+
+### 安装 cloudflared 的命令是什么意思？
+
+```bash
+cd /tmp
+```
+
+进入临时目录，下载的安装包放这里就行。
+
+```bash
+curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+```
+
+下载 Cloudflare Tunnel 的 Linux 安装包。
+
+```bash
+sudo dpkg -i cloudflared.deb
+```
+
+安装 `cloudflared`。
+
+```bash
+sudo cloudflared service install '<cloudflare-tunnel-token>'
+```
+
+把这个 Tunnel 注册成 Linux 后台服务。以后服务器重启时，它会自动启动。
+
+`<cloudflare-tunnel-token>` 是连接密钥，不要提交到 GitHub，不要公开截图。
+
+### 怎么判断 Tunnel 已经通了？
+
+先看服务器上的连接器：
+
+```bash
+systemctl status cloudflared --no-pager
+```
+
+再看公网健康检查：
+
+```bash
+curl https://api.keronshans.top/health
+```
+
+成功时应该看到：
+
+```json
+{"status":"ok","collection_name":"blog_chunks"}
+```
+
+如果看到 Cloudflare `1033`，意思是：
+
+```txt
+Cloudflare 上的 Tunnel 和 DNS 已经存在，
+但是服务器上的 cloudflared 还没有连上。
+```
+
+这通常要检查：
+
+```bash
+systemctl status cloudflared --no-pager
+journalctl -u cloudflared -n 100 --no-pager
+```
+
+### 最终网站访问链路
+
+现在完整链路是：
+
+```txt
+浏览器
+  -> keronshans.top/blog-search-lab
+  -> /api/blog-search
+  -> https://api.keronshans.top/search
+  -> Cloudflare Tunnel
+  -> 腾讯云服务器 127.0.0.1:8000
+  -> FastAPI /search
+  -> Qdrant 向量搜索
+  -> 返回 JSON 结果
+```
+
+浏览器看不到 Bearer Token，因为 token 只存在网站服务端环境变量和搜索服务器配置里。
+
+## 20. 当前最大的维护风险
 
 ### token 泄露
 
@@ -1043,7 +1215,19 @@ python scripts/sync_index.py --config config.yaml
 - Webhook 触发服务器拉取
 - 定时任务自动同步
 
-## 20. 一句话总结
+### Tunnel 连接器停止
+
+如果 `cloudflared` 停了，`api.keronshans.top` 可能返回 Cloudflare `1033`。
+
+解决：
+
+```bash
+sudo systemctl restart cloudflared
+systemctl status cloudflared --no-pager
+curl https://api.keronshans.top/health
+```
+
+## 21. 一句话总结
 
 这个项目做的是：
 
@@ -1051,7 +1235,7 @@ python scripts/sync_index.py --config config.yaml
 给你的个人博客增加一个语义搜索后端。
 它读取 Markdown 博客，切成片段，生成向量，存进 Qdrant。
 用户搜索时，它把查询也变成向量，然后找出最相关的文章片段。
-现在后端已经部署成功，下一步是让网站页面接入它。
+现在后端和网站代理都已部署，最后一步是让服务器上的 cloudflared 连接器连上 Cloudflare Tunnel。
 ```
 
 你做的不只是“装了一个工具”，而是完整走了一遍：
@@ -1063,9 +1247,9 @@ python scripts/sync_index.py --config config.yaml
 -> 模型缓存处理
 -> 向量数据库
 -> API 服务
--> Nginx 反代
+-> Cloudflare Tunnel
 -> Cloudflare 域名
--> 网站端待接入
+-> 网站端代理接口
 ```
 
 这就是一个真实的小型工程链路。
