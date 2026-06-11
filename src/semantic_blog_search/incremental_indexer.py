@@ -75,6 +75,8 @@ def sync_index_with_services(
     chunk_config = config.get("chunk", {})
     chunk_size = int(chunk_config.get("chunk_size", 600))
     chunk_overlap = int(chunk_config.get("chunk_overlap", 100))
+    split_heading_max_level = int(chunk_config.get("split_heading_max_level", 0) or 0)
+    include_heading_path = bool(chunk_config.get("include_heading_path", True))
 
     manifest = load_manifest(manifest_path)
     known_files = set(manifest.get("posts", {}).keys())
@@ -117,7 +119,13 @@ def sync_index_with_services(
             summary["added"] += 1
 
         post = parse_markdown_file(markdown_path, url_prefix=url_prefix)
-        chunks = chunk_post(post, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+        chunks = chunk_post(
+            post,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            split_heading_max_level=split_heading_max_level,
+            include_heading_path=include_heading_path,
+        )
         vectors = embedder.encode([chunk["text"] for chunk in chunks])
         store.upsert_chunks(chunks, vectors, content_hash=content_hash)
 

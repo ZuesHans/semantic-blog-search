@@ -87,6 +87,7 @@ def _keyword_score(query: str, candidate: dict) -> float:
 
     title = _normalize_text(candidate.get("title", ""))
     tags = _normalize_text(" ".join(candidate.get("tags", [])))
+    heading_path = _normalize_text(candidate.get("heading_path", ""))
     text = _normalize_text(candidate.get("text", candidate.get("snippet", "")))
 
     score = 0.0
@@ -94,6 +95,8 @@ def _keyword_score(query: str, candidate: dict) -> float:
         score += 0.45
     if normalized_query in tags:
         score += 0.35
+    if normalized_query in heading_path:
+        score += 0.40
     if normalized_query in text:
         score += 0.30
 
@@ -101,11 +104,13 @@ def _keyword_score(query: str, candidate: dict) -> float:
     if terms:
         score += 0.20 * _term_coverage(terms, title)
         score += 0.15 * _term_coverage(terms, tags)
+        score += 0.20 * _term_coverage(terms, heading_path)
         score += 0.15 * _term_coverage(terms, text)
 
     grams = _char_ngrams(normalized_query, n=2)
     if grams:
         score += 0.20 * _gram_coverage(grams, title)
+        score += 0.20 * _gram_coverage(grams, heading_path)
         score += 0.10 * _gram_coverage(grams, text)
 
     return min(score, 1.0)

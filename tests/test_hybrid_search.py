@@ -57,3 +57,36 @@ def test_hybrid_rerank_keeps_api_shape():
     results = _rerank_hybrid("按秩合并", candidates, {})
 
     assert set(results[0]) == {"title", "url", "score", "snippet", "source_file"}
+
+
+def test_hybrid_rerank_boosts_heading_path_match():
+    candidates = [
+        {
+            "title": "数据结构",
+            "url": "/posts/data-structure",
+            "score": 0.82,
+            "snippet": "这里记录一道题。",
+            "source_file": "data.md",
+            "text": "这里记录一道题。",
+            "tags": ["数据结构"],
+            "heading_path": "数据结构 > 并查集 > 家谱",
+        },
+        {
+            "title": "图论",
+            "url": "/posts/graph",
+            "score": 0.83,
+            "snippet": "这里记录另一道题。",
+            "source_file": "graph.md",
+            "text": "这里记录另一道题。",
+            "tags": ["图论"],
+            "heading_path": "图论 > 最短路 > 模板",
+        },
+    ]
+
+    results = _rerank_hybrid(
+        query="家谱",
+        candidates=candidates,
+        search_config={"hybrid_keyword_weight": 0.25},
+    )
+
+    assert results[0]["title"] == "数据结构"

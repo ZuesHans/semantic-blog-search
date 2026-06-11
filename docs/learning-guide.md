@@ -910,7 +910,63 @@ python scripts/build_index.py --config config.yaml
 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python scripts/build_index.py --config config.yaml
 ```
 
-## 14. 当前项目已经做到什么程度？
+## 14. 为什么要按四级标题切 chunk？
+
+你的算法博客里很多 `####` 是具体题目名，例如：
+
+```md
+### 并查集
+#### [家谱](https://www.luogu.com.cn/problem/P2814)
+```
+
+旧切法只按空行和长度切，不知道“这段属于家谱这道题”。如果一个大章节里有很多题，搜索可能返回一个比较泛的片段。
+
+新切法会先看 Markdown 标题结构：
+
+```txt
+# 到 #### 都作为 section 边界
+##### 及以下默认不切
+```
+
+然后每个 chunk 都带上标题路径：
+
+```txt
+文章标题：数据结构
+标签：数据结构
+小节路径：数据结构 > 并查集 > 家谱
+正文：
+...
+```
+
+这样搜索“家谱”“按秩合并”“线段树 pushdown”时，模型不仅看正文，也能看见这段笔记所在的小节语境。
+
+默认配置是：
+
+```yaml
+chunk:
+  chunk_size: 700
+  chunk_overlap: 120
+  split_heading_max_level: 4
+  include_heading_path: true
+```
+
+这不是无脑切碎。规则是：
+
+```txt
+先按四级以内标题切 section
+如果某个 section 很长，再按 chunk_size 继续切
+chunk_overlap 只在同一个 section 内发生
+```
+
+所以不同题目之间不会互相混上下文。
+
+升级这个切分策略后，要重建索引：
+
+```bash
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python scripts/build_index.py --config config.yaml
+```
+
+## 15. 当前项目已经做到什么程度？
 
 已经做到：
 
@@ -935,7 +991,7 @@ HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python scripts/build_index.py --config c
 - 没有自动备份 Qdrant 数据
 - 没有公开搜索限流
 
-## 15. 我现在怎么自己测试？
+## 16. 我现在怎么自己测试？
 
 ### 测 health
 
@@ -967,7 +1023,7 @@ curl -H "Authorization: Bearer <token>" "https://api.keronshans.top/search?q=线
 
 成功会返回搜索结果。
 
-## 16. 日常更新博客后怎么办？
+## 17. 日常更新博客后怎么办？
 
 本地文章更新后，在本地 PowerShell：
 
@@ -987,7 +1043,7 @@ HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python scripts/sync_index.py --config co
 
 通常不用重启服务。
 
-## 17. 如果服务挂了怎么办？
+## 18. 如果服务挂了怎么办？
 
 先看服务状态：
 
@@ -1013,7 +1069,7 @@ sudo systemctl restart semantic-blog-search
 curl https://api.keronshans.top/health
 ```
 
-## 18. 如果搜索不到新文章怎么办？
+## 19. 如果搜索不到新文章怎么办？
 
 按顺序检查：
 
@@ -1045,7 +1101,7 @@ curl https://api.keronshans.top/health
 Authorization: Bearer <token>
 ```
 
-## 19. 这个项目适合怎么继续学？
+## 20. 这个项目适合怎么继续学？
 
 建议阅读顺序：
 
@@ -1070,7 +1126,7 @@ Cloudflare Tunnel 怎么把公网请求转到 FastAPI？
 Cloudflare DNS 怎么把域名转到 Tunnel？
 ```
 
-## 20. Cloudflare Tunnel 这一步是在做什么？
+## 21. Cloudflare Tunnel 这一步是在做什么？
 
 一开始我们尝试过让 `api.keronshans.top` 直接指向腾讯云服务器公网 IP。
 
@@ -1230,7 +1286,7 @@ journalctl -u cloudflared -n 100 --no-pager
 
 浏览器看不到 Bearer Token，因为 token 只存在网站服务端环境变量和搜索服务器配置里。
 
-## 21. 当前最大的维护风险
+## 22. 当前最大的维护风险
 
 ### token 泄露
 
@@ -1291,7 +1347,7 @@ systemctl status cloudflared --no-pager
 curl https://api.keronshans.top/health
 ```
 
-## 22. 一句话总结
+## 23. 一句话总结
 
 这个项目做的是：
 

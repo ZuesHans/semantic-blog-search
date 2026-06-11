@@ -130,7 +130,33 @@ search:
   hybrid_keyword_weight: 0.25
 ```
 
-如果你刚从旧版本升级，需要重新写入一次索引 payload，让 Qdrant 里保存完整 chunk 文本：
+## 四级标题感知 chunk 切分
+
+默认切分策略现在会理解 Markdown 标题结构，并切到四级标题：
+
+```yaml
+chunk:
+  chunk_size: 700
+  chunk_overlap: 120
+  split_heading_max_level: 4
+  include_heading_path: true
+```
+
+也就是说，`#`、`##`、`###`、`####` 都会作为小节边界。你的算法博客里很多 `####` 是题目名，这样搜索会更容易定位到具体题目。
+
+每个 chunk 会带上小节路径，例如：
+
+```txt
+文章标题：数据结构
+标签：数据结构、并查集
+小节路径：数据结构 > 并查集 > 家谱
+正文：
+...
+```
+
+`#####` 及以下默认不强制切分，避免切得太碎。代码块里的 `#include` 或 `#### fake heading` 也不会被误判为标题。
+
+如果你刚从旧版本升级，需要重新写入一次索引 payload，让 Qdrant 里保存完整 chunk 文本和标题路径：
 
 ```bash
 python scripts/build_index.py --config config.yaml
@@ -242,6 +268,8 @@ curl -H "Authorization: Bearer <token>" "https://api.keronshans.top/search?q=线
 - `embedding.model_name`：sentence-transformers 使用的 embedding 模型。
 - `chunk.chunk_size`：每个 chunk 目标字符数。
 - `chunk.chunk_overlap`：相邻 chunk 之间保留的重叠字符数。
+- `chunk.split_heading_max_level`：按几级 Markdown 标题切分；默认 `4` 表示切到 `####`。
+- `chunk.include_heading_path`：是否把小节路径写入 embedding 文本和 payload。
 - `search.top_k`：默认返回的搜索结果数量。
 - `search.hybrid_enabled`：是否启用混合搜索排序。
 - `search.hybrid_candidate_multiplier`：向量召回候选数相对 `top_k` 的倍数。

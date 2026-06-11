@@ -60,6 +60,9 @@ class VectorStore:
                 "text": chunk["text"],
                 "snippet": _make_snippet(chunk["text"]),
                 "chunk_index": chunk["chunk_index"],
+                "heading_path": chunk.get("heading_path", ""),
+                "heading_level": chunk.get("heading_level", 0),
+                "heading_text": chunk.get("heading_text", ""),
             }
             if content_hash is not None:
                 payload["content_hash"] = content_hash
@@ -161,6 +164,9 @@ def _result_from_hit(hit, include_text: bool = False) -> dict:
                 "tags": payload.get("tags", []),
                 "chunk_id": payload.get("chunk_id", ""),
                 "chunk_index": payload.get("chunk_index", 0),
+                "heading_path": payload.get("heading_path", ""),
+                "heading_level": payload.get("heading_level", 0),
+                "heading_text": payload.get("heading_text", ""),
             }
         )
     return result

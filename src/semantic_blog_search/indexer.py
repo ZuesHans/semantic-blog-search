@@ -14,6 +14,8 @@ def build_index(config: dict) -> None:
     chunk_config = config.get("chunk", {})
     chunk_size = int(chunk_config.get("chunk_size", 600))
     chunk_overlap = int(chunk_config.get("chunk_overlap", 100))
+    split_heading_max_level = int(chunk_config.get("split_heading_max_level", 0) or 0)
+    include_heading_path = bool(chunk_config.get("include_heading_path", True))
 
     embedding_config = config.get("embedding", {})
     model_name = embedding_config.get("model_name", "BAAI/bge-small-zh-v1.5")
@@ -27,7 +29,13 @@ def build_index(config: dict) -> None:
     print(f"Loaded {len(posts)} post(s).")
 
     print("Splitting posts into chunks...")
-    chunks = chunk_posts(posts, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+    chunks = chunk_posts(
+        posts,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        split_heading_max_level=split_heading_max_level,
+        include_heading_path=include_heading_path,
+    )
     print(f"Created {len(chunks)} chunk(s).")
 
     if not chunks:
